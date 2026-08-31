@@ -24,6 +24,11 @@ from deploy.sync_elevenlabs_agent import load_env_file, required_env
 
 
 API_BASE = "https://api.elevenlabs.io/v1"
+SOFT_TIMEOUT_MESSAGES = {
+    "сейчас сориентирую.",
+    "секунду, подбираю вариант.",
+    "смотрю, что вам подойдёт.",
+}
 
 
 @dataclass(frozen=True)
@@ -64,11 +69,23 @@ async def receive_reply(websocket: Any, timeout_seconds: float) -> tuple[str, fl
     started = monotonic()
     first_chunk_at: float | None = None
     chunks: list[str] = []
+    fallback_reply = ""
+    fallback_deadline: float | None = None
     while True:
-        remaining = timeout_seconds - (monotonic() - started)
+        deadline = started + timeout_seconds
+        if fallback_deadline is not None:
+            deadline = min(deadline, fallback_deadline)
+        remaining = deadline - monotonic()
         if remaining <= 0:
+            if fallback_reply:
+                return fallback_reply, (first_chunk_at or monotonic()) - started
             raise TimeoutError("Timed out waiting for the agent reply")
-        raw_event = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+        try:
+            raw_event = await asyncio.wait_for(websocket.recv(), timeout=remaining)
+        except TimeoutError:
+            if fallback_reply:
+                return fallback_reply, (first_chunk_at or monotonic()) - started
+            raise
         event = json.loads(raw_event)
         if event.get("type") == "ping":
             await websocket.send(
@@ -82,7 +99,12 @@ async def receive_reply(websocket: Any, timeout_seconds: float) -> tuple[str, fl
                     first_chunk_at = monotonic()
                 chunks.append(str(part.get("text") or ""))
             if part.get("type") == "stop":
-                return "".join(chunks).strip(), (first_chunk_at or monotonic()) - started
+                reply = "".join(chunks).strip()
+                if reply.lower() not in SOFT_TIMEOUT_MESSAGES:
+                    return reply, (first_chunk_at or monotonic()) - started
+                fallback_reply = reply
+                fallback_deadline = monotonic() + 8.0
+                chunks = []
             continue
         if event.get("type") == "agent_response":
             text = str((event.get("agent_response_event") or {}).get("agent_response") or "")
