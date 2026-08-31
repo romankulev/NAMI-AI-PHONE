@@ -4,6 +4,12 @@ from fastapi.testclient import TestClient
 
 from app.elevenlabs_config import build_agent_payload, load_mcp_definitions
 from app.main import ELEVENLABS_API_BASE, app
+from app.yclients_proxy import (
+    compact_dates,
+    compact_services,
+    compact_staff,
+    compact_times,
+)
 from deploy.merge_env_config import merge_env
 from deploy.set_nami_prompt import env_value
 from deploy.sync_elevenlabs_agent import (
@@ -236,3 +242,44 @@ def test_test_persona_is_loaded_from_env_file(tmp_path):
     assert env_value(env_path, "NAMI_TEST_PERSONA_PROMPT") == (
         "Одесская манера\nбез карикатуры"
     )
+
+
+def test_yclients_responses_are_compacted_for_the_agent():
+    services = compact_services(
+        {
+            "services": [
+                {
+                    "id": 7,
+                    "title": "Маникюр с покрытием",
+                    "price_min": 2500,
+                    "price_max": 3000,
+                    "seance_length": 5400,
+                    "comment": " " * 2 + "Аккуратная услуга" + " " * 2,
+                    "images": ["must-not-reach-the-agent"],
+                    "prepaid_settings": {"irrelevant": True},
+                }
+            ]
+        }
+    )
+    assert services == {
+        "services": [
+            {
+                "id": 7,
+                "name": "Маникюр с покрытием",
+                "price_from": 2500,
+                "price_to": 3000,
+                "duration_minutes": 90,
+                "note": "Аккуратная услуга",
+            }
+        ]
+    }
+    assert compact_staff(
+        [{"id": 3, "name": "Елена", "specialization": "Ногтевой сервис", "avatar": "x"}]
+    ) == {"staff": [{"id": 3, "name": "Елена", "specialization": "Ногтевой сервис"}]}
+    assert compact_dates({"booking_dates": ["2026-09-03"], "working_dates": ["ignored"]}) == {
+        "available_dates": ["2026-09-03"]
+    }
+    assert compact_times(
+        [{"time": "12:00", "datetime": "2026-09-03 12:00:00", "sum_length": 1000}],
+        "2026-09-03",
+    ) == {"date": "2026-09-03", "available_times": ["12:00"]}

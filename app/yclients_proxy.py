@@ -1,6 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 from datetime import date
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -50,7 +51,7 @@ async def yclients_request(
     *,
     params: list[tuple[str, str | int]] | None = None,
     json_body: dict | None = None,
-) -> JSONResponse:
+) -> Any:
     base_url = os.getenv("YC_API_BASE_URL", "https://api.yclients.com/api/v1").rstrip("/")
     headers = {
         "Accept": "application/vnd.yclients.v2+json",
@@ -71,7 +72,92 @@ async def yclients_request(
         payload = response.json()
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="Invalid YCLIENTS response") from exc
-    return JSONResponse(payload, status_code=response.status_code)
+    if not response.is_success or payload.get("success") is False:
+        raise HTTPException(
+            status_code=response.status_code if response.status_code >= 400 else 502,
+            detail="YCLIENTS не смог обработать запрос",
+        )
+
+    if not isinstance(payload, dict) or "data" not in payload:
+        raise HTTPException(status_code=502, detail="YCLIENTS вернул неожиданный ответ")
+    return payload["data"]
+
+
+def compact_text(value: Any, *, limit: int = 180) -> str | None:
+    """Keep the agent context small and prevent HTML-heavy YCLIENTS fields."""
+    if not isinstance(value, str):
+        return None
+    text = " ".join(value.split())
+    return text[:limit] or None
+
+
+def compact_minutes(value: Any) -> int | None:
+    if not isinstance(value, (int, float)) or value <= 0:
+        return None
+    # YCLIENTS sends session length in seconds.  Retain a sensible fallback for
+    # installations that already expose minutes.
+    return round(value / 60) if value > 300 else round(value)
+
+
+def compact_price(value: Any) -> int | float | None:
+    if not isinstance(value, (int, float)) or value < 0:
+        return None
+    return value
+
+
+def compact_services(data: Any) -> dict[str, list[dict[str, Any]]]:
+    source = data.get("services", []) if isinstance(data, dict) else []
+    services: list[dict[str, Any]] = []
+    for item in source:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), int):
+            continue
+        service: dict[str, Any] = {"id": item["id"]}
+        name = compact_text(item.get("title"), limit=120)
+        if name:
+            service["name"] = name
+        minimum = compact_price(item.get("price_min"))
+        maximum = compact_price(item.get("price_max"))
+        if minimum is not None:
+            service["price_from"] = minimum
+        if maximum is not None and maximum != minimum:
+            service["price_to"] = maximum
+        duration = compact_minutes(item.get("seance_length"))
+        if duration is not None:
+            service["duration_minutes"] = duration
+        comment = compact_text(item.get("comment"), limit=220)
+        if comment:
+            service["note"] = comment
+        services.append(service)
+    return {"services": services}
+
+
+def compact_staff(data: Any) -> dict[str, list[dict[str, Any]]]:
+    staff: list[dict[str, Any]] = []
+    for item in data if isinstance(data, list) else []:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), int):
+            continue
+        specialist: dict[str, Any] = {"id": item["id"]}
+        name = compact_text(item.get("name"), limit=80)
+        if name:
+            specialist["name"] = name
+        specialization = compact_text(item.get("specialization"), limit=120)
+        if specialization:
+            specialist["specialization"] = specialization
+        staff.append(specialist)
+    return {"staff": staff}
+
+
+def compact_dates(data: Any) -> dict[str, list[str]]:
+    values = data.get("booking_dates", []) if isinstance(data, dict) else []
+    return {"available_dates": [value for value in values if isinstance(value, str)]}
+
+
+def compact_times(data: Any, target_date: str) -> dict[str, Any]:
+    times: list[str] = []
+    for item in data if isinstance(data, list) else []:
+        if isinstance(item, dict) and isinstance(item.get("time"), str):
+            times.append(item["time"])
+    return {"date": target_date, "available_times": times}
 
 
 @app.get("/healthz")
@@ -84,19 +170,21 @@ async def healthz() -> dict:
 
 @app.get("/services")
 async def services(request: Request) -> JSONResponse:
-    return await yclients_request(
+    data = await yclients_request(
         request, "GET", f"book_services/{required_env('YC_COMPANY_ID')}"
     )
+    return JSONResponse({"data": compact_services(data)})
 
 
 @app.get("/staff")
 async def staff(request: Request, service_id: int = Query(gt=0)) -> JSONResponse:
-    return await yclients_request(
+    data = await yclients_request(
         request,
         "GET",
         f"book_staff/{required_env('YC_COMPANY_ID')}",
-        params=[("service_ids[]", service_id)],
+        params=[("service_ids[]", service_id), ("without_seances", "1")],
     )
+    return JSONResponse({"data": compact_staff(data)})
 
 
 @app.get("/dates")
@@ -111,7 +199,7 @@ async def dates(
     end = date.fromisoformat(DateRange.validate(date_to))
     if end < start or (end - start).days > 31:
         raise HTTPException(status_code=422, detail="Date range must be 0..31 days")
-    return await yclients_request(
+    data = await yclients_request(
         request,
         "GET",
         f"book_dates/{required_env('YC_COMPANY_ID')}",
@@ -122,6 +210,7 @@ async def dates(
             ("date_to", date_to),
         ],
     )
+    return JSONResponse({"data": compact_dates(data)})
 
 
 @app.get("/times")
@@ -132,23 +221,31 @@ async def times(
     target_date: str = Query(alias="date"),
 ) -> JSONResponse:
     DateRange.validate(target_date)
-    return await yclients_request(
+    data = await yclients_request(
         request,
         "GET",
         f"book_times/{required_env('YC_COMPANY_ID')}/{staff_id}/{target_date}",
         params=[("service_ids[]", service_id)],
     )
+    return JSONResponse({"data": compact_times(data, target_date)})
 
 
 @app.post("/check")
 async def check(request: Request, slot: SlotCheck) -> JSONResponse:
-    return await yclients_request(
+    data = await yclients_request(
         request,
         "POST",
         f"book_check/{required_env('YC_COMPANY_ID')}",
         json_body={
-            "service_ids": [slot.service_id],
-            "staff_id": slot.staff_id,
-            "datetime": slot.datetime,
+            "appointments": [
+                {
+                    "id": 0,
+                    "services": [slot.service_id],
+                    "events": [],
+                    "staff_id": slot.staff_id,
+                    "datetime": slot.datetime,
+                }
+            ]
         },
     )
+    return JSONResponse({"data": {"slot": data}})
