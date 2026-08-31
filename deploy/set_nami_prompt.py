@@ -74,7 +74,9 @@ def main() -> None:
 
     replacements = {
         "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gpt-5-nano",
-        "ELEVENLABS_LLM_REASONING_EFFORT": "ELEVENLABS_LLM_REASONING_EFFORT=none",
+        # ElevenLabs does not accept reasoning_effort for gpt-5-nano.  An
+        # empty value omits the field entirely and keeps the fast path.
+        "ELEVENLABS_LLM_REASONING_EFFORT": "ELEVENLABS_LLM_REASONING_EFFORT=",
         "ELEVENLABS_LLM_MAX_TOKENS": "ELEVENLABS_LLM_MAX_TOKENS=160",
         "ELEVENLABS_VOICE_STABILITY": "ELEVENLABS_VOICE_STABILITY=0.35",
         "ELEVENLABS_TURN_EAGERNESS": "ELEVENLABS_TURN_EAGERNESS=normal",
