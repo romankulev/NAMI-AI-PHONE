@@ -75,7 +75,7 @@ def main() -> None:
         prompt += f"\n\n# Временный тестовый навык продаж\n{test_sales_prompt}"
 
     replacements = {
-        "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gemini-3.7-flash",
+        "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gpt-5.4-mini",
         # Leave the optional reasoning setting unset for low-latency hosted
         # models. This avoids an unsupported provider-specific override.
         "ELEVENLABS_LLM_REASONING_EFFORT": "ELEVENLABS_LLM_REASONING_EFFORT=",
