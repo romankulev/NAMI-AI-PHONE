@@ -257,8 +257,12 @@
     let userSpeechStartedAt = 0;
     let lastUserSpeechAt = 0;
     let lastBackchannelAt = 0;
+    let lastAgentSpeechAt = 0;
     let backchannelTimer = null;
     let playingBackchannel = null;
+    let backchannelMicStream = null;
+    let backchannelAudioContext = null;
+    let backchannelAnimationFrame = null;
 
     tg?.ready();
     tg?.expand();
@@ -326,6 +330,59 @@
       }
     }
 
+    function stopBackchannelDetector() {
+      if (backchannelAnimationFrame) cancelAnimationFrame(backchannelAnimationFrame);
+      backchannelAnimationFrame = null;
+      backchannelMicStream?.getTracks().forEach((track) => track.stop());
+      backchannelMicStream = null;
+      if (backchannelAudioContext) backchannelAudioContext.close().catch(() => {});
+      backchannelAudioContext = null;
+    }
+
+    async function startBackchannelDetector() {
+      if (!navigator.mediaDevices?.getUserMedia || backchannelMicStream) return;
+      try {
+        // This is a local VAD only: no audio is sent to our server or the LLM.
+        // The extra capture shares the already-approved microphone on modern
+        // browsers and lets us react before a final transcript is available.
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+        if (conversationMode !== "voice" || !conversation) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        backchannelMicStream = stream;
+        backchannelAudioContext = new AudioContextClass();
+        const analyser = backchannelAudioContext.createAnalyser();
+        analyser.fftSize = 512;
+        backchannelAudioContext.createMediaStreamSource(stream).connect(analyser);
+        const samples = new Uint8Array(analyser.fftSize);
+        const detect = () => {
+          if (!backchannelMicStream) return;
+          analyser.getByteTimeDomainData(samples);
+          let sum = 0;
+          for (const sample of samples) {
+            const amplitude = (sample - 128) / 128;
+            sum += amplitude * amplitude;
+          }
+          // Conservative threshold: short room noise should never trigger it.
+          if (Math.sqrt(sum / samples.length) > 0.022) noteUserSpeech();
+          backchannelAnimationFrame = requestAnimationFrame(detect);
+        };
+        detect();
+      } catch (error) {
+        // User transcript events remain as a graceful fallback when a browser
+        // does not permit a shared microphone capture.
+        console.debug("Backchannel VAD unavailable", error);
+      }
+    }
+
     function playBackchannel() {
       if (agentSpeaking || microphoneMuted || playingBackchannel || !conversation) return;
       const audio = new Audio(backchannelUrls[Math.floor(Math.random() * backchannelUrls.length)]);
@@ -338,7 +395,10 @@
     }
 
     function noteUserSpeech() {
-      if (conversationMode !== "voice" || agentSpeaking || microphoneMuted) return;
+      if (
+        conversationMode !== "voice" || agentSpeaking || microphoneMuted
+        || Date.now() - lastAgentSpeechAt < 900
+      ) return;
       const now = Date.now();
       if (!userSpeechStartedAt || now - lastUserSpeechAt > 900) userSpeechStartedAt = now;
       lastUserSpeechAt = now;
@@ -368,6 +428,7 @@
       activeChatMessage = null;
       agentSpeaking = false;
       stopBackchanneling();
+      stopBackchannelDetector();
       microphoneMuted = false;
       muteButton.setAttribute("aria-pressed", "false");
       muteButton.textContent = "🔇 Выключить микрофон";
@@ -394,7 +455,10 @@
           conversationToken,
           connectionType: "webrtc",
           preferHeadphonesForIosDevices: true,
-          onConnect: () => setVoiceConnectedUI(),
+          onConnect: () => {
+            setVoiceConnectedUI();
+            void startBackchannelDetector();
+          },
           onDisconnect: () => {
             if (!stopping) resetUI("Соединение завершено");
           },
@@ -409,10 +473,12 @@
               setState("", "<strong>Микрофон выключен</strong>");
             } else if (mode === "speaking") {
               agentSpeaking = true;
+              lastAgentSpeechAt = Date.now();
               stopBackchanneling();
               setState("speaking", "Администратор отвечает…");
             } else {
               agentSpeaking = false;
+              lastAgentSpeechAt = Date.now();
               setState("listening", "<strong>Слушаю вас</strong>");
             }
           },

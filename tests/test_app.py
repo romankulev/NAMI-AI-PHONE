@@ -66,6 +66,7 @@ def test_index_is_not_cached_and_uses_elevenlabs_sdk():
     assert "/api/elevenlabs/signed-url" in response.text
     assert "onMessage: handleConversationMessage" in response.text
     assert "/api/backchannels/agree" in response.text
+    assert "startBackchannelDetector" in response.text
 
 
 def test_client_config():
