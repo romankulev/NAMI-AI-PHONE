@@ -87,7 +87,9 @@ def main() -> None:
         # A repetitive "let me check" is more distracting than a brief pause.
         # The voice begins as soon as the model streams its first real token.
         "ELEVENLABS_SOFT_TIMEOUT_SECONDS": "ELEVENLABS_SOFT_TIMEOUT_SECONDS=-1",
-        "ELEVENLABS_SOFT_TIMEOUT_MESSAGE": "ELEVENLABS_SOFT_TIMEOUT_MESSAGE=",
+        # ElevenLabs validates this field even when the timeout is disabled.
+        # It is never played while the timeout stays at -1.
+        "ELEVENLABS_SOFT_TIMEOUT_MESSAGE": "ELEVENLABS_SOFT_TIMEOUT_MESSAGE=Подождите.",
         "ELEVENLABS_SOFT_TIMEOUT_ALTERNATIVES": "ELEVENLABS_SOFT_TIMEOUT_ALTERNATIVES=",
         "ELEVENLABS_SOFT_TIMEOUT_RANDOMIZE": "ELEVENLABS_SOFT_TIMEOUT_RANDOMIZE=false",
         "REALTIME_SYSTEM_PROMPT": f"REALTIME_SYSTEM_PROMPT={json.dumps(prompt, ensure_ascii=False)}",
