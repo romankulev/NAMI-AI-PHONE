@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.elevenlabs_config import build_agent_payload, load_mcp_definitions
 from app.main import ELEVENLABS_API_BASE, app
 from deploy.merge_env_config import merge_env
+from deploy.set_nami_prompt import env_value
 from deploy.sync_elevenlabs_agent import (
     mcp_config_from_definition,
     resolve_llm_model,
@@ -221,3 +222,15 @@ def test_strong_openai_model_falls_back_to_another_openai_model(monkeypatch):
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         assert resolve_llm_model(client, "test-key") == "gpt-5.4"
+
+
+def test_test_persona_is_loaded_from_env_file(tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        'NAMI_TEST_PERSONA_PROMPT="Одесская манера\\nбез карикатуры"\n',
+        encoding="utf-8",
+    )
+
+    assert env_value(env_path, "NAMI_TEST_PERSONA_PROMPT") == (
+        "Одесская манера\nбез карикатуры"
+    )

@@ -44,13 +44,37 @@ GREETING_PROMPT = (
 )
 
 
+def env_value(path: Path, name: str) -> str:
+    """Read one .env value without evaluating its contents as shell code."""
+    if not path.exists():
+        return ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key == name:
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] == '"':
+                try:
+                    return str(json.loads(value))
+                except json.JSONDecodeError:
+                    pass
+            if len(value) >= 2 and value[0] == value[-1] == "'":
+                return value[1:-1]
+            return value
+    return ""
+
+
 def main() -> None:
+    prompt = SYSTEM_PROMPT
+    test_persona = env_value(ENV_PATH, "NAMI_TEST_PERSONA_PROMPT").strip()
+    if test_persona:
+        prompt += f"\n\n# Временный тестовый тон\n{test_persona}"
+
     replacements = {
         "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gpt-5.6-terra",
         "ELEVENLABS_VOICE_STABILITY": "ELEVENLABS_VOICE_STABILITY=0.35",
         "ELEVENLABS_TURN_EAGERNESS": "ELEVENLABS_TURN_EAGERNESS=eager",
         "ELEVENLABS_SPECULATIVE_TURN": "ELEVENLABS_SPECULATIVE_TURN=true",
-        "REALTIME_SYSTEM_PROMPT": f"REALTIME_SYSTEM_PROMPT={json.dumps(SYSTEM_PROMPT, ensure_ascii=False)}",
+        "REALTIME_SYSTEM_PROMPT": f"REALTIME_SYSTEM_PROMPT={json.dumps(prompt, ensure_ascii=False)}",
         "REALTIME_GREETING_PROMPT": f"REALTIME_GREETING_PROMPT={json.dumps(GREETING_PROMPT, ensure_ascii=False)}",
     }
     lines = ENV_PATH.read_text(encoding="utf-8").splitlines()
