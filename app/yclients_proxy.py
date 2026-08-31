@@ -124,9 +124,6 @@ def compact_services(data: Any) -> dict[str, list[dict[str, Any]]]:
         duration = compact_minutes(item.get("seance_length"))
         if duration is not None:
             service["duration_minutes"] = duration
-        comment = compact_text(item.get("comment"), limit=220)
-        if comment:
-            service["note"] = comment
         services.append(service)
     return {"services": services}
 
@@ -232,7 +229,7 @@ async def times(
 
 @app.post("/check")
 async def check(request: Request, slot: SlotCheck) -> JSONResponse:
-    data = await yclients_request(
+    await yclients_request(
         request,
         "POST",
         f"book_check/{required_env('YC_COMPANY_ID')}",
@@ -248,4 +245,6 @@ async def check(request: Request, slot: SlotCheck) -> JSONResponse:
             ]
         },
     )
-    return JSONResponse({"data": {"slot": data}})
+    # A successful book_check response has no useful payload.  Do not pass an
+    # empty or provider-specific structure back into the model.
+    return JSONResponse({"data": {"available": True}})

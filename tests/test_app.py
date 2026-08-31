@@ -254,7 +254,6 @@ def test_yclients_responses_are_compacted_for_the_agent():
                     "price_min": 2500,
                     "price_max": 3000,
                     "seance_length": 5400,
-                    "comment": " " * 2 + "Аккуратная услуга" + " " * 2,
                     "images": ["must-not-reach-the-agent"],
                     "prepaid_settings": {"irrelevant": True},
                 }
@@ -269,7 +268,6 @@ def test_yclients_responses_are_compacted_for_the_agent():
                 "price_from": 2500,
                 "price_to": 3000,
                 "duration_minutes": 90,
-                "note": "Аккуратная услуга",
             }
         ]
     }
