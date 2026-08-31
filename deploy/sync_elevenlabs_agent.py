@@ -20,6 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.elevenlabs_config import (
     ConfigurationError,
     build_agent_payload,
+    env_int,
     load_mcp_definitions,
     required_env,
 )
@@ -92,7 +93,7 @@ def normalize_model_id(value: str) -> str:
 
 
 def resolve_llm_model(client: httpx.Client, api_key: str) -> str:
-    requested = os.getenv("ELEVENLABS_LLM_MODEL", "gpt-5.6-terra").strip()
+    requested = os.getenv("ELEVENLABS_LLM_MODEL", "gpt-5.6-luna").strip()
     body = request_json(client, "GET", "/convai/llm/list", api_key=api_key)
     model_ids = [
         item.get("llm")
@@ -154,9 +155,13 @@ def mcp_config_from_definition(definition: dict[str, Any]) -> dict[str, Any]:
         if definition.get("require_approval", "never") == "never"
         else "require_approval_all",
         "pre_tool_speech": "off",
-        "interruption_mode": "allow",
+        # A short background sound must not cancel a lookup mid-flight.  The
+        # caller can still interrupt the spoken answer that follows.
+        "interruption_mode": "disable_during_tool",
         "execution_mode": "immediate",
-        "response_timeout_secs": 30,
+        "response_timeout_secs": env_int(
+            "ELEVENLABS_MCP_RESPONSE_TIMEOUT", 8, 5, 300
+        ),
     }
     authorization = definition.get("authorization")
     if authorization:
@@ -187,6 +192,26 @@ def sync_mcp_servers(client: httpx.Client, api_key: str) -> list[str]:
         )
         if match and match.get("id"):
             mcp_id = str(match["id"])
+            # MCP integrations outlive agent updates. Keep their latency and
+            # interruption settings in sync instead of retaining stale values.
+            request_json(
+                client,
+                "PATCH",
+                f"/convai/mcp-servers/{mcp_id}",
+                api_key=api_key,
+                json_body={
+                    key: config[key]
+                    for key in (
+                        "approval_policy",
+                        "pre_tool_speech",
+                        "interruption_mode",
+                        "execution_mode",
+                        "response_timeout_secs",
+                        "request_headers",
+                    )
+                    if key in config
+                },
+            )
             print(f"MCP {config['name']} уже существует: {mcp_id}")
         else:
             created = request_json(

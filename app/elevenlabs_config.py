@@ -57,6 +57,17 @@ def env_bool(name: str, default: bool) -> bool:
     raise ConfigurationError(f"{name} должен быть true или false")
 
 
+def optional_choice(name: str, allowed: set[str]) -> str | None:
+    """Return a configured enum value, leaving the API default when it is empty."""
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return None
+    if value not in allowed:
+        choices = ", ".join(sorted(allowed))
+        raise ConfigurationError(f"{name} должен быть одним из: {choices}")
+    return value
+
+
 def expand_env_placeholders(value: Any) -> Any:
     if isinstance(value, str):
         def replace(match: re.Match[str]) -> str:
@@ -128,8 +139,39 @@ def build_agent_payload(
             }
         },
     }
+    reasoning_effort = optional_choice(
+        "ELEVENLABS_LLM_REASONING_EFFORT",
+        {"none", "low", "medium", "high", "xhigh", "max"},
+    )
+    if reasoning_effort is not None:
+        # A voice administrator needs to respond, not deliberate at length.
+        prompt_config["reasoning_effort"] = reasoning_effort
     if mcp_server_ids:
         prompt_config["mcp_server_ids"] = mcp_server_ids
+
+    soft_timeout_seconds = env_float(
+        "ELEVENLABS_SOFT_TIMEOUT_SECONDS", -1.0, -1.0, 8.0
+    )
+    if soft_timeout_seconds != -1.0 and soft_timeout_seconds < 0.5:
+        raise ConfigurationError(
+            "ELEVENLABS_SOFT_TIMEOUT_SECONDS должен быть -1 или от 0.5 до 8"
+        )
+
+    soft_timeout_config: dict[str, Any] = {
+        "timeout_seconds": soft_timeout_seconds,
+        "message": os.getenv(
+            "ELEVENLABS_SOFT_TIMEOUT_MESSAGE", "Сейчас сориентирую."
+        ).strip(),
+        "additional_soft_timeout_messages": [
+            item.strip()
+            for item in os.getenv("ELEVENLABS_SOFT_TIMEOUT_ALTERNATIVES", "").split("|")
+            if item.strip()
+        ],
+        "use_llm_generated_message": False,
+        "randomize_fillers": env_bool(
+            "ELEVENLABS_SOFT_TIMEOUT_RANDOMIZE", False
+        ),
+    }
 
     return {
         "name": os.getenv("ELEVENLABS_AGENT_NAME", "NAMI Beauty Administrator").strip(),
@@ -150,6 +192,7 @@ def build_agent_payload(
                 # playback if the caller continues talking.
                 "speculative_turn": env_bool("ELEVENLABS_SPECULATIVE_TURN", True),
                 "turn_model": "turn_v3",
+                "soft_timeout_config": soft_timeout_config,
             },
             "tts": {
                 "model_id": os.getenv(

@@ -155,6 +155,8 @@ def test_old_openai_mcp_format_is_reused_for_elevenlabs(monkeypatch):
     assert config["approval_policy"] == "auto_approve_all"
     assert config["pre_tool_speech"] == "off"
     assert config["execution_mode"] == "immediate"
+    assert config["interruption_mode"] == "disable_during_tool"
+    assert config["response_timeout_secs"] == 8
 
 
 def test_invalid_mcp_json_returns_configuration_error(monkeypatch):

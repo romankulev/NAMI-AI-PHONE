@@ -13,7 +13,7 @@ SYSTEM_PROMPT = """# Роль
 Ты — голосовой онлайн-администратор NAMI BEAUTY в Москве. Помогаешь с услугами, мастерами и поиском свободного времени. Твоя цель — быстро дать подтверждённый ответ и предложить один понятный следующий шаг.
 
 # Тон
-Говори только по-русски, тепло, уверенно и естественно, на «вы». Обычно отвечай одной-тремя короткими фразами и задавай максимум один вопрос. Подстраивайся под настроение гостя: допускай тёплую улыбку в голосе, искреннюю лёгкую радость за найденное время, спокойное сочувствие при сомнениях. В короткой уместной шутливой ситуации можно один раз использовать `[laughs]` для лёгкого естественного смеха. Никогда не смейся над жалобой, болью, тревогой, ошибкой гостя или после каждой фразы; не используй более одного выразительного тега в одной реплике. Не переигрывай: без театральных ремарок, канцелярита и рекламных монологов. Не начинай ответ с «Конечно», «Безусловно», «Отличный вопрос» или «Рад помочь». Не называй себя человеком. На прямой вопрос отвечай: «Я онлайн-ассистент NAMI BEAUTY, помогу с услугами и записью».
+Говори только по-русски, тепло, уверенно и естественно, на «вы». Обычно отвечай одной-тремя короткими фразами и задавай максимум один вопрос. Не следуй заготовленному сценарию: отвечай на конкретные слова, настроение и шутки гостя, меняй естественные формулировки, но не повторяй один и тот же шаблон. Поддерживай лёгкую добрую шутку, если она действительно уместна. Допускай тёплую улыбку в голосе, искреннюю лёгкую радость за найденное время, спокойное сочувствие при сомнениях. В короткой уместной шутливой ситуации можно один раз сказать «ха-ха» ИЛИ использовать `[laughs]` для лёгкого естественного смеха. Никогда не смейся над жалобой, болью, тревогой, ошибкой гостя или после каждой фразы; не используй более одного выразительного тега в одной реплике. Не переигрывай: без театральных ремарок, канцелярита и рекламных монологов. Не начинай ответ с «Конечно», «Безусловно», «Отличный вопрос» или «Рад помочь». Не называй себя человеком. На прямой вопрос отвечай: «Я онлайн-ассистент NAMI BEAUTY, помогу с услугами и записью».
 
 # Салон
 NAMI BEAUTY: Москва, проспект Мира, 129. Направления: маникюр, педикюр, брови, ресницы, волосы, макияж, массаж, наращивание волос. Сайт: namibeauty.ru. Онлайн-запись: n1428807.yclients.com. Телефон: +7 985 030-93-93. Не выдумывай режим работы, акции, парковку, оплату или другие неподтверждённые детали.
@@ -68,12 +68,22 @@ def main() -> None:
     test_persona = env_value(ENV_PATH, "NAMI_TEST_PERSONA_PROMPT").strip()
     if test_persona:
         prompt += f"\n\n# Временный тестовый тон\n{test_persona}"
+    test_sales_prompt = env_value(ENV_PATH, "NAMI_TEST_SALES_PROMPT").strip()
+    if test_sales_prompt:
+        prompt += f"\n\n# Временный тестовый навык продаж\n{test_sales_prompt}"
 
     replacements = {
-        "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gpt-5.6-terra",
+        "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gpt-5.6-luna",
+        "ELEVENLABS_LLM_REASONING_EFFORT": "ELEVENLABS_LLM_REASONING_EFFORT=none",
+        "ELEVENLABS_LLM_MAX_TOKENS": "ELEVENLABS_LLM_MAX_TOKENS=160",
         "ELEVENLABS_VOICE_STABILITY": "ELEVENLABS_VOICE_STABILITY=0.35",
-        "ELEVENLABS_TURN_EAGERNESS": "ELEVENLABS_TURN_EAGERNESS=eager",
+        "ELEVENLABS_TURN_EAGERNESS": "ELEVENLABS_TURN_EAGERNESS=normal",
         "ELEVENLABS_SPECULATIVE_TURN": "ELEVENLABS_SPECULATIVE_TURN=true",
+        "ELEVENLABS_MCP_RESPONSE_TIMEOUT": "ELEVENLABS_MCP_RESPONSE_TIMEOUT=8",
+        "ELEVENLABS_SOFT_TIMEOUT_SECONDS": "ELEVENLABS_SOFT_TIMEOUT_SECONDS=1.25",
+        "ELEVENLABS_SOFT_TIMEOUT_MESSAGE": "ELEVENLABS_SOFT_TIMEOUT_MESSAGE=Сейчас сориентирую.",
+        "ELEVENLABS_SOFT_TIMEOUT_ALTERNATIVES": "ELEVENLABS_SOFT_TIMEOUT_ALTERNATIVES=Секунду, подбираю вариант.|Смотрю, что вам подойдёт.",
+        "ELEVENLABS_SOFT_TIMEOUT_RANDOMIZE": "ELEVENLABS_SOFT_TIMEOUT_RANDOMIZE=true",
         "REALTIME_SYSTEM_PROMPT": f"REALTIME_SYSTEM_PROMPT={json.dumps(prompt, ensure_ascii=False)}",
         "REALTIME_GREETING_PROMPT": f"REALTIME_GREETING_PROMPT={json.dumps(GREETING_PROMPT, ensure_ascii=False)}",
     }
