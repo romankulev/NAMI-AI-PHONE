@@ -145,7 +145,10 @@ def build_agent_payload(
                 "silence_end_call_timeout": -1,
                 "turn_eagerness": turn_eagerness,
                 "spelling_patience": "auto",
-                "speculative_turn": False,
+                # Start preparing the answer before the turn detector has
+                # fully closed the caller's turn.  The platform still cancels
+                # playback if the caller continues talking.
+                "speculative_turn": env_bool("ELEVENLABS_SPECULATIVE_TURN", True),
                 "turn_model": "turn_v3",
             },
             "tts": {
@@ -166,6 +169,10 @@ def build_agent_payload(
                 "max_duration_seconds": env_int(
                     "ELEVENLABS_MAX_CALL_SECONDS", 1_800, 60, 7_200
                 ),
+                # Explicitly request interruption events.  Without this, a
+                # workspace default can leave the browser client unaware that
+                # the caller has barged in while the agent is speaking.
+                "client_events": ["audio", "interruption"],
             },
             "agent": {
                 "first_message": prompt_env("REALTIME_GREETING_PROMPT"),

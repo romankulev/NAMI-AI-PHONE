@@ -7,6 +7,7 @@ from app.main import ELEVENLABS_API_BASE, app
 from deploy.merge_env_config import merge_env
 from deploy.sync_elevenlabs_agent import (
     mcp_config_from_definition,
+    resolve_llm_model,
     write_env_values,
 )
 
@@ -126,6 +127,9 @@ def test_agent_config_uses_qwen_voice_prompt_and_mcp():
     assert config["tts"]["voice_id"] == "voice_test"
     assert config["tts"]["expressive_mode"] is True
     assert config["turn"]["turn_model"] == "turn_v3"
+    assert config["turn"]["turn_eagerness"] == "normal"
+    assert config["turn"]["speculative_turn"] is True
+    assert config["conversation"]["client_events"] == ["audio", "interruption"]
     assert payload["platform_settings"]["auth"]["enable_auth"] is True
 
 
@@ -203,3 +207,17 @@ def test_env_merge_preserves_elevenlabs_credentials(tmp_path):
     assert "ELEVENLABS_AGENT_ID=keep-agent" in merged
     assert "ELEVENLABS_VOICE_ID=keep-voice" in merged
     assert "ELEVENLABS_TTS_MODEL=eleven_v3_conversational" in merged
+
+
+def test_strong_openai_model_falls_back_to_another_openai_model(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_LLM_MODEL", "gpt-5.6-terra")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/convai/llm/list"
+        return httpx.Response(
+            200,
+            json={"llms": [{"llm": "gpt-5.4"}, {"llm": "qwen3.6-35b-a3b"}]},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert resolve_llm_model(client, "test-key") == "gpt-5.4"

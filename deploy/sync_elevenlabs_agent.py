@@ -92,7 +92,7 @@ def normalize_model_id(value: str) -> str:
 
 
 def resolve_llm_model(client: httpx.Client, api_key: str) -> str:
-    requested = os.getenv("ELEVENLABS_LLM_MODEL", "qwen3.6-35b-a3b").strip()
+    requested = os.getenv("ELEVENLABS_LLM_MODEL", "gpt-5.6-terra").strip()
     body = request_json(client, "GET", "/convai/llm/list", api_key=api_key)
     model_ids = [
         item.get("llm")
@@ -107,11 +107,30 @@ def resolve_llm_model(client: httpx.Client, api_key: str) -> str:
         if normalize_model_id(model_id) == normalized_requested:
             return model_id
 
-    qwen_models = [model_id for model_id in model_ids if "qwen" in model_id.lower()]
-    if requested.lower().startswith("qwen") and qwen_models:
-        selected = qwen_models[0]
-        print(f"Модель {requested} недоступна; выбрана доступная {selected}")
-        return selected
+    # Newer workspaces do not always expose every hosted model at once.  Keep the
+    # agent on an OpenAI reasoning model instead of silently falling back to Qwen
+    # when the preferred conversational model is not enabled in this workspace.
+    if requested.lower().startswith("gpt-5"):
+        for candidate in (
+            "gpt-5.6-terra",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5",
+            "gpt-4.1",
+            "gpt-4o",
+        ):
+            normalized_candidate = normalize_model_id(candidate)
+            selected = next(
+                (
+                    model_id
+                    for model_id in model_ids
+                    if normalize_model_id(model_id) == normalized_candidate
+                ),
+                None,
+            )
+            if selected:
+                print(f"Модель {requested} недоступна; выбрана доступная {selected}")
+                return selected
 
     raise ConfigurationError(
         f"Модель {requested} недоступна в этом ElevenLabs workspace"
