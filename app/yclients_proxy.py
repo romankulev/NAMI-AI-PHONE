@@ -92,6 +92,11 @@ def compact_text(value: Any, *, limit: int = 180) -> str | None:
 
 
 def compact_minutes(value: Any) -> int | None:
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except ValueError:
+            return None
     if not isinstance(value, (int, float)) or value <= 0:
         return None
     # YCLIENTS sends session length in seconds.  Retain a sensible fallback for
