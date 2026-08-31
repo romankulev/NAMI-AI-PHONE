@@ -70,12 +70,8 @@ async def receive_reply(websocket: Any, timeout_seconds: float) -> tuple[str, fl
     first_chunk_at: float | None = None
     chunks: list[str] = []
     fallback_reply = ""
-    fallback_deadline: float | None = None
     while True:
-        deadline = started + timeout_seconds
-        if fallback_deadline is not None:
-            deadline = min(deadline, fallback_deadline)
-        remaining = deadline - monotonic()
+        remaining = started + timeout_seconds - monotonic()
         if remaining <= 0:
             if fallback_reply:
                 return fallback_reply, (first_chunk_at or monotonic()) - started
@@ -106,7 +102,6 @@ async def receive_reply(websocket: Any, timeout_seconds: float) -> tuple[str, fl
                 if reply.lower() not in SOFT_TIMEOUT_MESSAGES:
                     return reply, (first_chunk_at or monotonic()) - started
                 fallback_reply = reply
-                fallback_deadline = monotonic() + 8.0
                 chunks = []
             continue
         if event.get("type") == "agent_response":
