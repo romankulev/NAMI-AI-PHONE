@@ -93,7 +93,7 @@ def normalize_model_id(value: str) -> str:
 
 
 def resolve_llm_model(client: httpx.Client, api_key: str) -> str:
-    requested = os.getenv("ELEVENLABS_LLM_MODEL", "gpt-5-nano").strip()
+    requested = os.getenv("ELEVENLABS_LLM_MODEL", "gpt-5.4-mini").strip()
     body = request_json(client, "GET", "/convai/llm/list", api_key=api_key)
     model_ids = [
         item.get("llm")
@@ -113,6 +113,7 @@ def resolve_llm_model(client: httpx.Client, api_key: str) -> str:
     # when the preferred conversational model is not enabled in this workspace.
     if requested.lower().startswith("gpt-5"):
         for candidate in (
+            "gpt-5.4-mini",
             "gpt-5-nano",
             "gpt-5.4-nano",
             "gpt-4.1-nano",
