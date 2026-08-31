@@ -201,6 +201,7 @@ def main() -> None:
     parser.add_argument("--env", type=Path, default=Path(".env"))
     parser.add_argument("--simulator-llm", default="gpt-4o-mini")
     parser.add_argument("--turns", type=int, default=8)
+    parser.add_argument("--only", choices=[scenario.name for scenario in SCENARIOS])
     parser.add_argument("--show-excerpts", action="store_true")
     args = parser.parse_args()
 
@@ -210,9 +211,12 @@ def main() -> None:
     api_key = required_env("ELEVENLABS_API_KEY")
     agent_id = required_env("ELEVENLABS_AGENT_ID")
 
+    selected_scenarios = tuple(
+        scenario for scenario in SCENARIOS if not args.only or scenario.name == args.only
+    )
     reports: list[dict[str, Any]] = []
     with httpx.Client(timeout=httpx.Timeout(90.0)) as client:
-        for scenario in SCENARIOS:
+        for scenario in selected_scenarios:
             report = run_scenario(
                 client,
                 api_key=api_key,
