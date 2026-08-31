@@ -100,6 +100,9 @@ async def receive_reply(websocket: Any, timeout_seconds: float) -> tuple[str, fl
                 chunks.append(str(part.get("text") or ""))
             if part.get("type") == "stop":
                 reply = "".join(chunks).strip()
+                if not reply:
+                    chunks = []
+                    continue
                 if reply.lower() not in SOFT_TIMEOUT_MESSAGES:
                     return reply, (first_chunk_at or monotonic()) - started
                 fallback_reply = reply
