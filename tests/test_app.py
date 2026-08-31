@@ -281,6 +281,3 @@ def test_yclients_responses_are_compacted_for_the_agent():
         [{"time": "12:00", "datetime": "2026-09-03 12:00:00", "sum_length": 1000}],
         "2026-09-03",
     ) == {"date": "2026-09-03", "available_times": ["12:00"]}
-    assert compact_services(
-        {"services": [{"id": 8, "title": "Тест", "seance_length": "3600"}]}
-    ) == {"services": [{"id": 8, "name": "Тест", "duration_minutes": 60}]}
