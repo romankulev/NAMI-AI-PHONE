@@ -73,7 +73,7 @@ def main() -> None:
         prompt += f"\n\n# Временный тестовый навык продаж\n{test_sales_prompt}"
 
     replacements = {
-        "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gpt-5.6-luna",
+        "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gpt-5-nano",
         "ELEVENLABS_LLM_REASONING_EFFORT": "ELEVENLABS_LLM_REASONING_EFFORT=none",
         "ELEVENLABS_LLM_MAX_TOKENS": "ELEVENLABS_LLM_MAX_TOKENS=160",
         "ELEVENLABS_VOICE_STABILITY": "ELEVENLABS_VOICE_STABILITY=0.35",

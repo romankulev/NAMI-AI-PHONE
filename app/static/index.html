@@ -137,6 +137,59 @@
     #mute { background: rgba(75, 141, 255, 0.14); color: #b9d4ff; border: 1px solid rgba(75, 141, 255, 0.3); }
     #mute[aria-pressed="true"] { background: rgba(255, 185, 71, 0.14); color: #ffd18a; border-color: rgba(255, 185, 71, 0.32); }
     #stop { background: rgba(255, 93, 117, 0.13); color: #ff9bac; border: 1px solid rgba(255, 93, 117, 0.25); }
+    #chat-toggle { background: rgba(75, 141, 255, 0.14); color: #b9d4ff; border: 1px solid rgba(75, 141, 255, 0.3); }
+
+    .chat {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      text-align: left;
+    }
+
+    .chat[hidden] { display: none; }
+
+    .chat-log {
+      min-height: 110px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 2px 2px 8px;
+      display: grid;
+      gap: 8px;
+      scroll-behavior: smooth;
+    }
+
+    .chat-message {
+      max-width: 88%;
+      padding: 10px 12px;
+      border-radius: 15px;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.42;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .chat-message.assistant { justify-self: start; background: rgba(255, 255, 255, 0.08); border-bottom-left-radius: 4px; }
+    .chat-message.user { justify-self: end; background: rgba(75, 141, 255, 0.72); border-bottom-right-radius: 4px; }
+
+    .chat-compose { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+
+    #chat-input {
+      min-width: 0;
+      min-height: 48px;
+      max-height: 120px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 13px;
+      color: var(--text);
+      background: rgba(0, 0, 0, 0.16);
+      font: inherit;
+      line-height: 1.3;
+    }
+
+    #chat-send { width: auto; min-height: 48px; padding: 0 14px; background: linear-gradient(135deg, var(--blue), #715cff); }
+    #chat-stop { margin-top: 9px; min-height: 42px; background: rgba(255, 93, 117, 0.13); color: #ff9bac; border: 1px solid rgba(255, 93, 117, 0.25); }
 
     .hint { margin: 17px 0 0; color: #63758c; font-size: 12px; line-height: 1.45; }
   </style>
@@ -155,9 +208,19 @@
 
     <div class="actions">
       <button id="start" type="button">🎙 Начать разговор</button>
+      <button id="chat-toggle" type="button">💬 Написать ассистенту</button>
       <button id="mute" type="button" aria-pressed="false" hidden>🔇 Выключить микрофон</button>
       <button id="stop" type="button" hidden>Завершить разговор</button>
     </div>
+
+    <section id="chat" class="chat" aria-label="Текстовый чат с администратором" hidden>
+      <div id="chat-log" class="chat-log" aria-live="polite"></div>
+      <form id="chat-form" class="chat-compose">
+        <textarea id="chat-input" rows="1" maxlength="2000" placeholder="Напишите сообщение…" disabled></textarea>
+        <button id="chat-send" type="submit" disabled>Отправить</button>
+      </form>
+      <button id="chat-stop" type="button">Закрыть чат</button>
+    </section>
 
     <p class="hint">Включены WebRTC-эхоподавление, шумоподавление и возможность перебивать ассистента.</p>
   </main>
@@ -167,14 +230,23 @@
 
     const tg = window.Telegram?.WebApp;
     const startButton = document.querySelector("#start");
+    const chatToggleButton = document.querySelector("#chat-toggle");
     const muteButton = document.querySelector("#mute");
     const stopButton = document.querySelector("#stop");
+    const chatPanel = document.querySelector("#chat");
+    const chatLog = document.querySelector("#chat-log");
+    const chatForm = document.querySelector("#chat-form");
+    const chatInput = document.querySelector("#chat-input");
+    const chatSendButton = document.querySelector("#chat-send");
+    const chatStopButton = document.querySelector("#chat-stop");
     const statusElement = document.querySelector("#status");
     const orb = document.querySelector("#orb");
 
     let conversation = null;
+    let conversationMode = null;
     let microphoneMuted = false;
     let stopping = false;
+    let activeChatMessage = null;
 
     tg?.ready();
     tg?.expand();
@@ -210,8 +282,18 @@
       return body.token;
     }
 
-    function setConnectedUI() {
+    async function fetchSignedUrl() {
+      const response = await fetch("/api/elevenlabs/signed-url", { method: "POST" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.detail || `Ошибка сервера: ${response.status}`);
+      }
+      return body.signed_url;
+    }
+
+    function setVoiceConnectedUI() {
       startButton.hidden = true;
+      chatToggleButton.hidden = true;
       startButton.disabled = false;
       muteButton.hidden = false;
       stopButton.hidden = false;
@@ -220,13 +302,20 @@
 
     function resetUI(message = "Разговор завершён") {
       conversation = null;
+      conversationMode = null;
+      activeChatMessage = null;
       microphoneMuted = false;
       muteButton.setAttribute("aria-pressed", "false");
       muteButton.textContent = "🔇 Выключить микрофон";
       startButton.hidden = false;
       startButton.disabled = false;
+      chatToggleButton.hidden = false;
+      chatToggleButton.disabled = false;
       muteButton.hidden = true;
       stopButton.hidden = true;
+      chatPanel.hidden = true;
+      chatInput.disabled = true;
+      chatSendButton.disabled = true;
       setState("", message);
     }
 
@@ -236,11 +325,12 @@
 
       try {
         const conversationToken = await fetchConversationToken();
+        conversationMode = "voice";
         conversation = await Conversation.startSession({
           conversationToken,
           connectionType: "webrtc",
           preferHeadphonesForIosDevices: true,
-          onConnect: () => setConnectedUI(),
+          onConnect: () => setVoiceConnectedUI(),
           onDisconnect: () => {
             if (!stopping) resetUI("Соединение завершено");
           },
@@ -266,6 +356,104 @@
       } catch (error) {
         console.error(error);
         resetUI(errorMessage(error));
+      }
+    }
+
+    function scrollChatToBottom() {
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    function appendChatMessage(role, text = "") {
+      const message = document.createElement("div");
+      message.className = `chat-message ${role}`;
+      message.textContent = text;
+      chatLog.append(message);
+      scrollChatToBottom();
+      return message;
+    }
+
+    function setChatConnectedUI() {
+      startButton.hidden = true;
+      chatToggleButton.hidden = true;
+      chatToggleButton.disabled = false;
+      chatPanel.hidden = false;
+      chatInput.disabled = false;
+      chatSendButton.disabled = false;
+      setState("listening", "<strong>Чат подключён</strong>");
+      chatInput.focus();
+    }
+
+    function handleAgentChatResponsePart(event = {}) {
+      const part = event.text_response_part || event;
+      const type = part?.type;
+      if (type === "start") {
+        activeChatMessage = appendChatMessage("assistant");
+        setState("speaking", "Администратор печатает…");
+        return;
+      }
+      if (type === "delta") {
+        if (!activeChatMessage) activeChatMessage = appendChatMessage("assistant");
+        activeChatMessage.textContent += part.text || "";
+        scrollChatToBottom();
+        return;
+      }
+      if (type === "stop") {
+        activeChatMessage = null;
+        chatInput.disabled = false;
+        chatSendButton.disabled = false;
+        setState("listening", "<strong>Чат подключён</strong>");
+        chatInput.focus();
+      }
+    }
+
+    async function startTextChat() {
+      chatToggleButton.disabled = true;
+      chatPanel.hidden = false;
+      chatLog.replaceChildren();
+      chatInput.disabled = true;
+      chatSendButton.disabled = true;
+      setState("connecting", "Подключаю текстовый чат…");
+
+      try {
+        const signedUrl = await fetchSignedUrl();
+        conversationMode = "chat";
+        conversation = await Conversation.startSession({
+          signedUrl,
+          connectionType: "websocket",
+          overrides: { conversation: { textOnly: true } },
+          onConnect: () => setChatConnectedUI(),
+          onDisconnect: () => {
+            if (!stopping) resetUI("Чат завершён");
+          },
+          onAgentChatResponsePart: handleAgentChatResponsePart,
+          onError: (error) => {
+            console.error("ElevenLabs chat error", error);
+            setState("", errorMessage(error));
+          },
+        });
+      } catch (error) {
+        console.error(error);
+        resetUI(errorMessage(error));
+      }
+    }
+
+    async function sendChatMessage(event) {
+      event.preventDefault();
+      const text = chatInput.value.trim();
+      if (!text || !conversation || conversationMode !== "chat") return;
+
+      appendChatMessage("user", text);
+      chatInput.value = "";
+      chatInput.disabled = true;
+      chatSendButton.disabled = true;
+      setState("speaking", "Администратор печатает…");
+      try {
+        await conversation.sendUserMessage(text);
+      } catch (error) {
+        console.error("ElevenLabs sendUserMessage", error);
+        chatInput.disabled = false;
+        chatSendButton.disabled = false;
+        setState("", errorMessage(error));
       }
     }
 
@@ -302,8 +490,17 @@
     }
 
     startButton.addEventListener("click", startConversation);
+    chatToggleButton.addEventListener("click", startTextChat);
     muteButton.addEventListener("click", toggleMicrophone);
     stopButton.addEventListener("click", () => stopConversation());
+    chatForm.addEventListener("submit", sendChatMessage);
+    chatStopButton.addEventListener("click", () => stopConversation("Чат завершён"));
+    chatInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        chatForm.requestSubmit();
+      }
+    });
     window.addEventListener("pagehide", () => {
       if (conversation) void conversation.endSession();
     });

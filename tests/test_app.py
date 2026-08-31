@@ -55,6 +55,12 @@ def test_index_is_not_cached_and_uses_elevenlabs_sdk():
     assert 'id="mute"' in response.text
     assert "conversation.setMicMuted" in response.text
     assert 'connectionType: "webrtc"' in response.text
+    assert 'id="chat-toggle"' in response.text
+    assert 'id="chat-input"' in response.text
+    assert 'connectionType: "websocket"' in response.text
+    assert "conversation.sendUserMessage" in response.text
+    assert "onAgentChatResponsePart" in response.text
+    assert "/api/elevenlabs/signed-url" in response.text
 
 
 def test_client_config():
@@ -109,6 +115,24 @@ def test_conversation_token_is_proxied_without_exposing_api_key():
         "token": "temporary-token",
         "conversation_id": "conv_test",
     }
+    assert "test-elevenlabs-key" not in response.text
+
+
+def test_signed_url_is_proxied_without_exposing_api_key():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/convai/conversation/get-signed-url"
+        assert request.url.params["agent_id"] == "agent_test"
+        assert request.headers["xi-api-key"] == "test-elevenlabs-key"
+        return httpx.Response(200, json={"signed_url": "wss://temporary.example/session"})
+
+    with TestClient(app) as client:
+        original_client = app.state.http_client
+        app.state.http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        response = client.post("/api/elevenlabs/signed-url")
+        app.state.http_client = original_client
+
+    assert response.status_code == 200
+    assert response.json() == {"signed_url": "wss://temporary.example/session"}
     assert "test-elevenlabs-key" not in response.text
 
 

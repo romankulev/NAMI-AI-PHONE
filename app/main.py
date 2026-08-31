@@ -127,3 +127,45 @@ async def create_conversation_token(
         },
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.post("/api/elevenlabs/signed-url", include_in_schema=False)
+async def create_signed_url(request: Request) -> JSONResponse:
+    """Create a short-lived URL for a browser text-chat session.
+
+    The ElevenLabs API key remains server-side; the client receives only a
+    single-use signed URL for the authenticated WebSocket connection.
+    """
+    try:
+        api_key = required_env("ELEVENLABS_API_KEY")
+        agent_id = required_env("ELEVENLABS_AGENT_ID")
+    except ConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    try:
+        response = await request.app.state.http_client.get(
+            f"{ELEVENLABS_API_BASE}/convai/conversation/get-signed-url",
+            headers={"xi-api-key": api_key},
+            params={"agent_id": agent_id},
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось подключиться к ElevenLabs API",
+        ) from exc
+
+    if not response.is_success:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=elevenlabs_error_detail(response),
+        )
+
+    body = response.json()
+    signed_url = body.get("signed_url")
+    if not signed_url:
+        raise HTTPException(
+            status_code=502,
+            detail="ElevenLabs API не вернул подписанный URL для чата",
+        )
+
+    return JSONResponse({"signed_url": signed_url}, headers={"Cache-Control": "no-store"})
