@@ -75,7 +75,7 @@ def main() -> None:
         prompt += f"\n\n# Временный тестовый навык продаж\n{test_sales_prompt}"
 
     replacements = {
-        "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gpt-5.4-mini",
+        "ELEVENLABS_LLM_MODEL": "ELEVENLABS_LLM_MODEL=gemini-3.7-flash",
         # Leave the optional reasoning setting unset for low-latency hosted
         # models. This avoids an unsupported provider-specific override.
         "ELEVENLABS_LLM_REASONING_EFFORT": "ELEVENLABS_LLM_REASONING_EFFORT=",
@@ -84,10 +84,12 @@ def main() -> None:
         "ELEVENLABS_TURN_EAGERNESS": "ELEVENLABS_TURN_EAGERNESS=normal",
         "ELEVENLABS_SPECULATIVE_TURN": "ELEVENLABS_SPECULATIVE_TURN=true",
         "ELEVENLABS_MCP_RESPONSE_TIMEOUT": "ELEVENLABS_MCP_RESPONSE_TIMEOUT=8",
-        "ELEVENLABS_SOFT_TIMEOUT_SECONDS": "ELEVENLABS_SOFT_TIMEOUT_SECONDS=0.9",
-        "ELEVENLABS_SOFT_TIMEOUT_MESSAGE": "ELEVENLABS_SOFT_TIMEOUT_MESSAGE=Сейчас сориентирую.",
-        "ELEVENLABS_SOFT_TIMEOUT_ALTERNATIVES": "ELEVENLABS_SOFT_TIMEOUT_ALTERNATIVES=Секунду, подбираю вариант.|Смотрю, что вам подойдёт.",
-        "ELEVENLABS_SOFT_TIMEOUT_RANDOMIZE": "ELEVENLABS_SOFT_TIMEOUT_RANDOMIZE=true",
+        # A repetitive "let me check" is more distracting than a brief pause.
+        # The voice begins as soon as the model streams its first real token.
+        "ELEVENLABS_SOFT_TIMEOUT_SECONDS": "ELEVENLABS_SOFT_TIMEOUT_SECONDS=-1",
+        "ELEVENLABS_SOFT_TIMEOUT_MESSAGE": "ELEVENLABS_SOFT_TIMEOUT_MESSAGE=",
+        "ELEVENLABS_SOFT_TIMEOUT_ALTERNATIVES": "ELEVENLABS_SOFT_TIMEOUT_ALTERNATIVES=",
+        "ELEVENLABS_SOFT_TIMEOUT_RANDOMIZE": "ELEVENLABS_SOFT_TIMEOUT_RANDOMIZE=false",
         "REALTIME_SYSTEM_PROMPT": f"REALTIME_SYSTEM_PROMPT={json.dumps(prompt, ensure_ascii=False)}",
         "REALTIME_GREETING_PROMPT": f"REALTIME_GREETING_PROMPT={json.dumps(GREETING_PROMPT, ensure_ascii=False)}",
     }

@@ -137,6 +137,27 @@ def resolve_llm_model(client: httpx.Client, api_key: str) -> str:
                 print(f"Модель {requested} недоступна; выбрана доступная {selected}")
                 return selected
 
+    if requested.lower().startswith("gemini"):
+        for candidate in (
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3-flash-preview",
+            "gemini-2.5-flash",
+        ):
+            normalized_candidate = normalize_model_id(candidate)
+            selected = next(
+                (
+                    model_id
+                    for model_id in model_ids
+                    if normalize_model_id(model_id) == normalized_candidate
+                ),
+                None,
+            )
+            if selected:
+                print(f"Модель {requested} недоступна; выбрана доступная {selected}")
+                return selected
+
     raise ConfigurationError(
         f"Модель {requested} недоступна в этом ElevenLabs workspace"
     )
