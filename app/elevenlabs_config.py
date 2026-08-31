@@ -215,7 +215,7 @@ def build_agent_payload(
                 # Explicitly request interruption events.  Without this, a
                 # workspace default can leave the browser client unaware that
                 # the caller has barged in while the agent is speaking.
-                "client_events": ["audio", "interruption"],
+                "client_events": ["audio", "interruption", "user_transcript"],
             },
             "agent": {
                 "first_message": prompt_env("REALTIME_GREETING_PROMPT"),

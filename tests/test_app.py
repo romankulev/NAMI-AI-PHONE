@@ -1,7 +1,10 @@
+import json
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app import main as main_module
 from app.elevenlabs_config import build_agent_payload, load_mcp_definitions
 from app.main import ELEVENLABS_API_BASE, app
 from app.yclients_proxy import (
@@ -61,6 +64,8 @@ def test_index_is_not_cached_and_uses_elevenlabs_sdk():
     assert "conversation.sendUserMessage" in response.text
     assert "onAgentChatResponsePart" in response.text
     assert "/api/elevenlabs/signed-url" in response.text
+    assert "onMessage: handleConversationMessage" in response.text
+    assert "/api/backchannels/agree" in response.text
 
 
 def test_client_config():
@@ -136,6 +141,28 @@ def test_signed_url_is_proxied_without_exposing_api_key():
     assert "test-elevenlabs-key" not in response.text
 
 
+def test_backchannel_is_cached_and_uses_fixed_scripted_clip(tmp_path, monkeypatch):
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/text-to-speech/voice_test/stream"
+        assert request.headers["xi-api-key"] == "test-elevenlabs-key"
+        body = json.loads(request.content)
+        assert body["text"] == "Ага."
+        assert body["model_id"] == "eleven_multilingual_v2"
+        return httpx.Response(200, content=b"fixed-audio")
+
+    monkeypatch.setattr(main_module, "BACKCHANNEL_CACHE_DIR", tmp_path)
+    with TestClient(app) as client:
+        original_client = app.state.http_client
+        app.state.http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        response = client.get("/api/backchannels/agree")
+        app.state.http_client = original_client
+
+    assert response.status_code == 200
+    assert response.content == b"fixed-audio"
+    assert response.headers["content-type"] == "audio/mpeg"
+    assert (tmp_path / "agree.mp3").read_bytes() == b"fixed-audio"
+
+
 def test_agent_config_uses_qwen_voice_prompt_and_mcp():
     payload = build_agent_payload(
         llm_model="qwen3.6-35b-a3b",
@@ -160,7 +187,11 @@ def test_agent_config_uses_qwen_voice_prompt_and_mcp():
     assert config["turn"]["turn_model"] == "turn_v3"
     assert config["turn"]["turn_eagerness"] == "normal"
     assert config["turn"]["speculative_turn"] is True
-    assert config["conversation"]["client_events"] == ["audio", "interruption"]
+    assert config["conversation"]["client_events"] == [
+        "audio",
+        "interruption",
+        "user_transcript",
+    ]
     assert payload["platform_settings"]["auth"]["enable_auth"] is True
 
 

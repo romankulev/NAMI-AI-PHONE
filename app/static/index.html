@@ -247,6 +247,18 @@
     let microphoneMuted = false;
     let stopping = false;
     let activeChatMessage = null;
+    const backchannelUrls = [
+      "/api/backchannels/agree",
+      "/api/backchannels/understand",
+      "/api/backchannels/thinking",
+      "/api/backchannels/continue",
+    ];
+    let agentSpeaking = false;
+    let userSpeechStartedAt = 0;
+    let lastUserSpeechAt = 0;
+    let lastBackchannelAt = 0;
+    let backchannelTimer = null;
+    let playingBackchannel = null;
 
     tg?.ready();
     tg?.expand();
@@ -298,12 +310,64 @@
       muteButton.hidden = false;
       stopButton.hidden = false;
       setState("listening", "<strong>Слушаю вас</strong>");
+      // Fetch the four fixed clips while the conversation connects. They are
+      // played locally later, so no LLM turn is created for an "ага".
+      backchannelUrls.forEach((url) => fetch(url, { cache: "force-cache" }).catch(() => {}));
+    }
+
+    function stopBackchanneling() {
+      if (backchannelTimer) clearTimeout(backchannelTimer);
+      backchannelTimer = null;
+      userSpeechStartedAt = 0;
+      lastUserSpeechAt = 0;
+      if (playingBackchannel) {
+        playingBackchannel.pause();
+        playingBackchannel = null;
+      }
+    }
+
+    function playBackchannel() {
+      if (agentSpeaking || microphoneMuted || playingBackchannel || !conversation) return;
+      const audio = new Audio(backchannelUrls[Math.floor(Math.random() * backchannelUrls.length)]);
+      audio.preload = "auto";
+      audio.volume = 0.42;
+      audio.onended = () => { if (playingBackchannel === audio) playingBackchannel = null; };
+      audio.onerror = () => { if (playingBackchannel === audio) playingBackchannel = null; };
+      playingBackchannel = audio;
+      audio.play().catch(() => { if (playingBackchannel === audio) playingBackchannel = null; });
+    }
+
+    function noteUserSpeech() {
+      if (conversationMode !== "voice" || agentSpeaking || microphoneMuted) return;
+      const now = Date.now();
+      if (!userSpeechStartedAt || now - lastUserSpeechAt > 900) userSpeechStartedAt = now;
+      lastUserSpeechAt = now;
+      if (now - userSpeechStartedAt < 2400 || now - lastBackchannelAt < 7000 || backchannelTimer) return;
+      backchannelTimer = setTimeout(() => {
+        backchannelTimer = null;
+        const current = Date.now();
+        if (!agentSpeaking && current - lastUserSpeechAt < 900 && current - lastBackchannelAt >= 7000) {
+          lastBackchannelAt = current;
+          playBackchannel();
+        }
+      }, 180);
+    }
+
+    function handleConversationMessage(message = {}) {
+      // ElevenLabs sends tentative and final user_transcript events when this
+      // client event is enabled. Be tolerant of SDK event-shape changes.
+      const type = message.type || message?.user_transcription_event?.type;
+      if (type === "user_transcript" || message.source === "user" || message.user_transcription_event) {
+        noteUserSpeech();
+      }
     }
 
     function resetUI(message = "Разговор завершён") {
       conversation = null;
       conversationMode = null;
       activeChatMessage = null;
+      agentSpeaking = false;
+      stopBackchanneling();
       microphoneMuted = false;
       muteButton.setAttribute("aria-pressed", "false");
       muteButton.textContent = "🔇 Выключить микрофон";
@@ -339,12 +403,16 @@
               setState("connecting", "Подключаю голосового администратора…");
             }
           },
+          onMessage: handleConversationMessage,
           onModeChange: ({ mode } = {}) => {
             if (microphoneMuted) {
               setState("", "<strong>Микрофон выключен</strong>");
             } else if (mode === "speaking") {
+              agentSpeaking = true;
+              stopBackchanneling();
               setState("speaking", "Администратор отвечает…");
             } else {
+              agentSpeaking = false;
               setState("listening", "<strong>Слушаю вас</strong>");
             }
           },
