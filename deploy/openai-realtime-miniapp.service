@@ -1,0 +1,17 @@
+[Unit]
+Description=ElevenLabs NAMI Voice Agent Telegram Mini App
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/apps/openai-realtime-miniapp
+EnvironmentFile=%h/apps/openai-realtime-miniapp/.env
+ExecStart=%h/apps/openai-realtime-miniapp/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8787 --proxy-headers --forwarded-allow-ips=*
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

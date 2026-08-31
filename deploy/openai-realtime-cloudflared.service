@@ -1,0 +1,15 @@
+[Unit]
+Description=Cloudflare Quick Tunnel for ElevenLabs NAMI Voice Agent
+After=network-online.target openai-realtime-miniapp.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

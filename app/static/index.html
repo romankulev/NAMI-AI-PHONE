@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#08111f">
+  <title>Голосовой помощник NAMI</title>
+  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: #07101d;
+      --card: rgba(17, 29, 48, 0.82);
+      --line: rgba(255, 255, 255, 0.09);
+      --text: #f6f8fb;
+      --muted: #91a2b8;
+      --blue: #4b8dff;
+      --cyan: #48d9f3;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100svh;
+      color: var(--tg-theme-text-color, var(--text));
+      background:
+        radial-gradient(circle at 50% 12%, rgba(47, 110, 255, 0.26), transparent 34rem),
+        linear-gradient(160deg, var(--tg-theme-bg-color, var(--bg)), #040914 75%);
+      display: grid;
+      place-items: center;
+      padding: max(22px, env(safe-area-inset-top)) 18px max(22px, env(safe-area-inset-bottom));
+    }
+
+    main {
+      width: min(100%, 430px);
+      padding: 30px 24px 24px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: var(--card);
+      backdrop-filter: blur(22px);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+      text-align: center;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--cyan);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(27px, 8vw, 38px);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    .subtitle {
+      margin: 12px auto 0;
+      max-width: 320px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .orb-wrap { height: 190px; display: grid; place-items: center; }
+
+    .orb {
+      width: 116px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      position: relative;
+      background:
+        radial-gradient(circle at 32% 28%, #d6f9ff 0 4%, #67ddff 17%, #397cff 48%, #6138d8 100%);
+      box-shadow:
+        0 0 0 15px rgba(74, 137, 255, 0.07),
+        0 0 65px rgba(68, 137, 255, 0.55),
+        inset -18px -16px 34px rgba(30, 0, 105, 0.38);
+      transition: transform 220ms ease, filter 220ms ease;
+    }
+
+    .orb::after {
+      content: "";
+      position: absolute;
+      inset: -21px;
+      border: 1px solid rgba(117, 205, 255, 0.28);
+      border-radius: inherit;
+      opacity: 0;
+    }
+
+    .orb.connecting { animation: breathe 1.1s ease-in-out infinite; }
+    .orb.listening { animation: listen 1.35s ease-in-out infinite; }
+    .orb.speaking { animation: speak 0.62s ease-in-out infinite alternate; }
+    .orb.listening::after, .orb.speaking::after { animation: ring 1.6s ease-out infinite; }
+
+    @keyframes breathe { 50% { transform: scale(0.92); filter: saturate(1.3); } }
+    @keyframes listen { 50% { transform: scale(1.08); } }
+    @keyframes speak { to { transform: scale(1.13) rotate(3deg); filter: hue-rotate(16deg); } }
+    @keyframes ring { from { transform: scale(0.86); opacity: 0.8; } to { transform: scale(1.45); opacity: 0; } }
+
+    .status {
+      min-height: 48px;
+      margin: 0 0 18px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .status strong { color: var(--text); }
+    .actions { display: grid; gap: 10px; }
+
+    button {
+      width: 100%;
+      min-height: 54px;
+      border: 0;
+      border-radius: 16px;
+      color: white;
+      font: inherit;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 120ms ease, opacity 120ms ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:active { transform: scale(0.98); }
+    button:disabled { cursor: wait; opacity: 0.58; }
+    button[hidden] { display: none; }
+    #start { background: linear-gradient(135deg, var(--blue), #715cff); box-shadow: 0 12px 34px rgba(59, 112, 255, 0.35); }
+    #mute { background: rgba(75, 141, 255, 0.14); color: #b9d4ff; border: 1px solid rgba(75, 141, 255, 0.3); }
+    #mute[aria-pressed="true"] { background: rgba(255, 185, 71, 0.14); color: #ffd18a; border-color: rgba(255, 185, 71, 0.32); }
+    #stop { background: rgba(255, 93, 117, 0.13); color: #ff9bac; border: 1px solid rgba(255, 93, 117, 0.25); }
+
+    .hint { margin: 17px 0 0; color: #63758c; font-size: 12px; line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">ElevenLabs Agent</p>
+    <h1>Администратор NAMI</h1>
+    <p class="subtitle">Живой разговор с администратором прямо в Telegram или браузере.</p>
+
+    <div class="orb-wrap" aria-hidden="true">
+      <div id="orb" class="orb"></div>
+    </div>
+
+    <p id="status" class="status"><strong>Готов к разговору</strong></p>
+
+    <div class="actions">
+      <button id="start" type="button">🎙 Начать разговор</button>
+      <button id="mute" type="button" aria-pressed="false" hidden>🔇 Выключить микрофон</button>
+      <button id="stop" type="button" hidden>Завершить разговор</button>
+    </div>
+
+    <p class="hint">Включены WebRTC-эхоподавление, шумоподавление и возможность перебивать ассистента.</p>
+  </main>
+
+  <script type="module">
+    import { Conversation } from "https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.21.0/+esm";
+
+    const tg = window.Telegram?.WebApp;
+    const startButton = document.querySelector("#start");
+    const muteButton = document.querySelector("#mute");
+    const stopButton = document.querySelector("#stop");
+    const statusElement = document.querySelector("#status");
+    const orb = document.querySelector("#orb");
+
+    let conversation = null;
+    let microphoneMuted = false;
+    let stopping = false;
+
+    tg?.ready();
+    tg?.expand();
+    tg?.disableVerticalSwipes?.();
+    tg?.setHeaderColor?.("#08111f");
+    tg?.setBackgroundColor?.("#07101d");
+
+    function setState(state, message) {
+      orb.className = `orb ${state || ""}`.trim();
+      statusElement.innerHTML = message;
+    }
+
+    function errorMessage(error) {
+      if (typeof error === "string") return error;
+      return error?.message || "Не удалось начать разговор";
+    }
+
+    function participantName() {
+      const telegramId = tg?.initDataUnsafe?.user?.id;
+      return telegramId ? `telegram-${telegramId}` : undefined;
+    }
+
+    async function fetchConversationToken() {
+      const response = await fetch("/api/elevenlabs/conversation-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participant_name: participantName() }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.detail || `Ошибка сервера: ${response.status}`);
+      }
+      return body.token;
+    }
+
+    function setConnectedUI() {
+      startButton.hidden = true;
+      startButton.disabled = false;
+      muteButton.hidden = false;
+      stopButton.hidden = false;
+      setState("listening", "<strong>Слушаю вас</strong>");
+    }
+
+    function resetUI(message = "Разговор завершён") {
+      conversation = null;
+      microphoneMuted = false;
+      muteButton.setAttribute("aria-pressed", "false");
+      muteButton.textContent = "🔇 Выключить микрофон";
+      startButton.hidden = false;
+      startButton.disabled = false;
+      muteButton.hidden = true;
+      stopButton.hidden = true;
+      setState("", message);
+    }
+
+    async function startConversation() {
+      startButton.disabled = true;
+      setState("connecting", "Создаю защищённое соединение…");
+
+      try {
+        const conversationToken = await fetchConversationToken();
+        conversation = await Conversation.startSession({
+          conversationToken,
+          connectionType: "webrtc",
+          preferHeadphonesForIosDevices: true,
+          onConnect: () => setConnectedUI(),
+          onDisconnect: () => {
+            if (!stopping) resetUI("Соединение завершено");
+          },
+          onStatusChange: ({ status } = {}) => {
+            if (status === "connecting") {
+              setState("connecting", "Подключаю голосового администратора…");
+            }
+          },
+          onModeChange: ({ mode } = {}) => {
+            if (microphoneMuted) {
+              setState("", "<strong>Микрофон выключен</strong>");
+            } else if (mode === "speaking") {
+              setState("speaking", "Администратор отвечает…");
+            } else {
+              setState("listening", "<strong>Слушаю вас</strong>");
+            }
+          },
+          onError: (error) => {
+            console.error("ElevenLabs conversation error", error);
+            setState("", errorMessage(error));
+          },
+        });
+      } catch (error) {
+        console.error(error);
+        resetUI(errorMessage(error));
+      }
+    }
+
+    function toggleMicrophone() {
+      if (!conversation) return;
+      microphoneMuted = !microphoneMuted;
+      conversation.setMicMuted(microphoneMuted);
+      muteButton.setAttribute("aria-pressed", String(microphoneMuted));
+      muteButton.textContent = microphoneMuted
+        ? "🎙 Включить микрофон"
+        : "🔇 Выключить микрофон";
+      setState(
+        microphoneMuted ? "" : "listening",
+        microphoneMuted ? "<strong>Микрофон выключен</strong>" : "<strong>Слушаю вас</strong>",
+      );
+    }
+
+    async function stopConversation(message = "Разговор завершён") {
+      if (!conversation) {
+        resetUI(message);
+        return;
+      }
+      stopping = true;
+      const activeConversation = conversation;
+      conversation = null;
+      try {
+        await activeConversation.endSession();
+      } catch (error) {
+        console.warn("ElevenLabs endSession", error);
+      } finally {
+        stopping = false;
+        resetUI(message);
+      }
+    }
+
+    startButton.addEventListener("click", startConversation);
+    muteButton.addEventListener("click", toggleMicrophone);
+    stopButton.addEventListener("click", () => stopConversation());
+    window.addEventListener("pagehide", () => {
+      if (conversation) void conversation.endSession();
+    });
+  </script>
+</body>
+</html>

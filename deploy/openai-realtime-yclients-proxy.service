@@ -1,0 +1,17 @@
+[Unit]
+Description=NAMI read-only YCLIENTS proxy for n8n
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/apps/openai-realtime-miniapp
+EnvironmentFile=%h/apps/openai-realtime-miniapp/.env
+ExecStart=%h/apps/openai-realtime-miniapp/.venv/bin/uvicorn app.yclients_proxy:app --host 127.0.0.1 --port 8790
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
